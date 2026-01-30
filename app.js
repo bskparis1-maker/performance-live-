@@ -289,6 +289,7 @@ function renderLine(person, lives) {
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       plugins: { legend: { position: "top" } },
       interaction: { mode: "index", intersect: false },
       scales: {
