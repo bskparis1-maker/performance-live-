@@ -1,173 +1,95 @@
-/***********************
- * CONFIG
- ***********************/
-const API_URL = "https://script.google.com/macros/s/AKfycbwJHN77_i3GKjEYCzeymi0R8lS9IC8nlLzbduUJBVb5ZiFizzqRfey95_4rgQfRlk8/exec";
-const LOCAL_KEY = "livePerformance_local_v1";
+/*********************************
+ * CONFIG (IMPORTANT)
+ *********************************/
+const SPREADSHEET_ID = "https://script.google.com/macros/s/AKfycbxzZa_bHktlywIA1hZ9UMhHJJwBSY-82Ng0oxjUOlyWis9CCEl8rMciu1E-_0JyZzM/exec";
 
-let data = { oumiya: [], abdoulaye: [] };
-let charts = { oumiya: null, abdoulaye: null, dashboard: null };
+/*********************************
+ * ENTRY POINT
+ *********************************/
+function doGet(e) {
+  e = e || { parameter: {} };
 
-/***********************
- * JSONP
- ***********************/
-function qs(obj) {
-  const p = new URLSearchParams();
-  Object.entries(obj).forEach(([k, v]) => p.set(k, String(v)));
-  return p.toString();
+  const action = (e.parameter.action || "list").toLowerCase();
+  const person = (e.parameter.person || "").toUpperCase();
+
+  // Ping debug (super utile)
+  if (action === "ping") {
+    return respond_(e, {
+      ok: true,
+      ping: "pong",
+      gotCallback: Boolean(e.parameter.callback),
+      personReceived: person || null
+    });
+  }
+
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sh = ss.getSheetByName(person);
+
+  if (!sh) {
+    return respond_(e, { ok: false, error: "Sheet not found: " + person });
+  }
+
+  if (action === "list") {
+    return respond_(e, { ok: true, rows: listRows_(sh) });
+  }
+
+  if (action === "add") {
+    sh.appendRow([
+      e.parameter.date || "",
+      e.parameter.time || "",
+      Number(e.parameter.viewers || 0),
+      Number(e.parameter.likes || 0),
+      Number(e.parameter.duration || 0),
+      Number(e.parameter.comments || 0),
+      Number(e.parameter.revenue || 0),
+    ]);
+    return respond_(e, { ok: true });
+  }
+
+  if (action === "reset") {
+    resetSheet_(sh);
+    return respond_(e, { ok: true });
+  }
+
+  return respond_(e, { ok: false, error: "Invalid action" });
 }
 
-function jsonp(url, timeout = 8000) {
-  return new Promise((resolve, reject) => {
-    const cb = "cb_" + Math.random().toString(36).slice(2);
-    const s = document.createElement("script");
-    let done = false;
-
-    const timer = setTimeout(() => {
-      if (done) return;
-      done = true;
-      cleanup();
-      reject(new Error("Timeout JSONP"));
-    }, timeout);
-
-    function cleanup() {
-      clearTimeout(timer);
-      try { delete window[cb]; } catch {}
-      s.remove();
-    }
-
-    window[cb] = (res) => {
-      if (done) return;
-      done = true;
-      cleanup();
-      resolve(res);
-    };
-
-    s.onerror = () => {
-      if (done) return;
-      done = true;
-      cleanup();
-      reject(new Error("JSONP error"));
-    };
-
-    s.src = url + (url.includes("?") ? "&" : "?") + "callback=" + cb + "&_=" + Date.now();
-    document.body.appendChild(s);
-  });
+/*********************************
+ * HELPERS
+ *********************************/
+function listRows_(sh) {
+  const values = sh.getDataRange().getValues();
+  if (values.length <= 1) return [];
+  return values.slice(1).map(r => ({
+    date: String(r[0] || ""),
+    time: String(r[1] || ""),
+    viewers: Number(r[2] || 0),
+    likes: Number(r[3] || 0),
+    duration: Number(r[4] || 0),
+    comments: Number(r[5] || 0),
+    revenue: Number(r[6] || 0),
+  }));
 }
 
-/***********************
- * API
- ***********************/
-const apiList = (p) => jsonp(`${API_URL}?${qs({ action: "list", person: p })}`);
-const apiAdd  = (p, l) => jsonp(`${API_URL}?${qs({ action: "add", person: p, ...l })}`);
-const apiReset = (p) => jsonp(`${API_URL}?${qs({ action: "reset", person: p })}`);
-
-/***********************
- * Local storage
- ***********************/
-function loadLocal() {
-  try { return JSON.parse(localStorage.getItem(LOCAL_KEY)) || { oumiya: [], abdoulaye: [] }; }
-  catch { return { oumiya: [], abdoulaye: [] }; }
-}
-function saveLocal() {
-  localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
+function resetSheet_(sh) {
+  const lastRow = sh.getLastRow();
+  if (lastRow > 1) sh.getRange(2, 1, lastRow - 1, 7).clearContent();
 }
 
-/***********************
- * UI
- ***********************/
-function showTab(tab) {
-  document.querySelectorAll(".tab").forEach(t => t.classList.add("hidden"));
-  document.getElementById(tab)?.classList.remove("hidden");
+/*********************************
+ * JSONP RESPONSE (CRITICAL)
+ *********************************/
+function respond_(e, obj) {
+  const cb = e.parameter.callback;
+  const json = JSON.stringify(obj);
+
+  if (cb) {
+    return ContentService
+      .createTextOutput(`${cb}(${json});`)
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+
+  return ContentService
+    .createTextOutput(json)
+    .setMimeType(ContentService.MimeType.JSON);
 }
-
-function toast(msg) {
-  const t = document.getElementById("toast");
-  if (!t) return;
-  t.textContent = msg;
-  t.classList.remove("hidden");
-  setTimeout(() => t.classList.add("hidden"), 1800);
-}
-
-/***********************
- * DATA
- ***********************/
-function addLive(e, person) {
-  e.preventDefault();
-  const f = e.target;
-
-  const live = {
-    date: f.date.value,
-    time: f.time.value,
-    viewers: +f.viewers.value,
-    likes: +f.likes.value,
-    duration: +f.duration.value,
-    comments: +f.comments.value,
-    revenue: +f.revenue.value,
-  };
-
-  data[person].push(live);
-  saveLocal();
-  redrawAll();
-
-  apiAdd(person.toUpperCase(), live)
-    .then(() => loadSheets())
-    .catch(() => toast("⚠️ Sync Sheets impossible"));
-}
-
-/***********************
- * CHARTS
- ***********************/
-function renderLine(person) {
-  const ctx = document.getElementById("line-" + person);
-  if (!ctx) return;
-
-  if (charts[person]) charts[person].destroy();
-
-  charts[person] = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels: data[person].map(l => `${l.date} ${l.time}`),
-      datasets: [
-        { label: "Spectateurs", data: data[person].map(l=>l.viewers) },
-        { label: "Likes", data: data[person].map(l=>l.likes) },
-        { label: "Durée", data: data[person].map(l=>l.duration) },
-        { label: "Commentaires", data: data[person].map(l=>l.comments) },
-        { label: "CA", data: data[person].map(l=>l.revenue) },
-      ]
-    },
-    options: { responsive: true, maintainAspectRatio: false }
-  });
-}
-
-function redrawAll() {
-  renderLine("oumiya");
-  renderLine("abdoulaye");
-}
-
-/***********************
- * LOAD
- ***********************/
-function loadSheets() {
-  Promise.all([apiList("OUMIYA"), apiList("ABDOULAYE")])
-    .then(([o,a]) => {
-      data.oumiya = o.rows || [];
-      data.abdoulaye = a.rows || [];
-      saveLocal();
-      redrawAll();
-      toast("✅ Sync Sheets OK");
-    })
-    .catch(() => toast("⚠️ Sync Sheets bloquée"));
-}
-
-/***********************
- * INIT
- ***********************/
-document.addEventListener("DOMContentLoaded", () => {
-  window.showTab = showTab;
-  window.addLive = addLive;
-
-  data = loadLocal();
-  redrawAll();
-  loadSheets();
-  showTab("oumiya");
-});
