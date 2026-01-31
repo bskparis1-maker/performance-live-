@@ -2,11 +2,9 @@
  * CONFIG
  ***********************/
 const API_URL =
-  "https://script.google.com/macros/s/AKfycbxzZa_bHktlywIA1hZ9UMhHJJwBSY-82Ng0oxjUOlyWis9CCEl8rMciu1E-_0JyZzM/exec";
+  "https://script.google.com/macros/s/AKfycbwJHN77_i3GKjEYCzeymi0R8lS9IC8nlLzbduUJBVb5ZiFizzqRfey95_4rgQfRlk8/exec";
 
 let data = { oumiya: [], abdoulaye: [] };
-
-// Charts
 let lineCharts = { oumiya: null, abdoulaye: null };
 let dashboardBar = null;
 
@@ -18,7 +16,7 @@ function toast(msg) {
   if (!el) return;
   el.textContent = msg;
   el.classList.remove("hidden");
-  setTimeout(() => el.classList.add("hidden"), 1800);
+  setTimeout(() => el.classList.add("hidden"), 2000);
 }
 
 function setActiveBtn(tab) {
@@ -31,9 +29,13 @@ function setActiveBtn(tab) {
 
 function showTab(tab) {
   document.querySelectorAll(".tab").forEach((t) => t.classList.add("hidden"));
-  const el = document.getElementById(tab);
-  if (el) el.classList.remove("hidden");
+  document.getElementById(tab)?.classList.remove("hidden");
   setActiveBtn(tab);
+
+  // rafraîchit à l’ouverture d’un onglet
+  if (tab === "oumiya") refreshPerson("oumiya");
+  if (tab === "abdoulaye") refreshPerson("abdoulaye");
+  if (tab === "dashboard") updateDashboard();
 }
 
 /***********************
@@ -52,7 +54,7 @@ function startEndForRange(range) {
   if (range === "day") {
     start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
   } else if (range === "week") {
-    const day = now.getDay(); // 0=dim,1=lun
+    const day = now.getDay();
     const diffToMon = day === 0 ? 6 : day - 1;
     start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMon, 0, 0, 0);
   } else if (range === "month") {
@@ -84,18 +86,20 @@ function getPersonFilter(person) {
       end = new Date(ed.getFullYear(), ed.getMonth(), ed.getDate(), 23, 59, 59);
     } else {
       const se = startEndForRange("month");
-      start = se.start; end = se.end;
+      start = se.start;
+      end = se.end;
     }
   } else {
     const se = startEndForRange(range);
-    start = se.start; end = se.end;
+    start = se.start;
+    end = se.end;
   }
 
   return { start, end };
 }
 
 /***********************
- * JSONP (anti-CORS, GitHub Pages, iPhone OK)
+ * JSONP (anti-CORS)
  ***********************/
 function qs(obj) {
   const p = new URLSearchParams();
@@ -136,13 +140,15 @@ function jsonp(url, timeoutMs = 9000) {
       reject(new Error("JSONP error"));
     };
 
-    script.src = url + (url.includes("?") ? "&" : "?") + "callback=" + cb + "&_=" + Date.now();
+    script.src =
+      url + (url.includes("?") ? "&" : "?") + "callback=" + cb + "&_=" + Date.now();
+
     document.body.appendChild(script);
   });
 }
 
 /***********************
- * Sheets API (100% Google Sheets)
+ * Sheets API
  ***********************/
 async function apiList(personUpper) {
   const url = `${API_URL}?${qs({ action: "list", person: personUpper })}`;
@@ -174,7 +180,7 @@ async function apiReset(personUpper) {
 }
 
 /***********************
- * Sync (SHEETS = source unique)
+ * Sync (Sheets = source unique)
  ***********************/
 function sanitizeLive(l) {
   return {
@@ -189,17 +195,22 @@ function sanitizeLive(l) {
 }
 
 async function loadAllFromSheets() {
-  toast("⏳ Synchronisation...");
-  const [o, a] = await Promise.all([apiList("OUMIYA"), apiList("ABDOULAYE")]);
+  try {
+    toast("⏳ Chargement Sheets...");
+    const [o, a] = await Promise.all([apiList("OUMIYA"), apiList("ABDOULAYE")]);
 
-  data.oumiya = (o || []).map(sanitizeLive);
-  data.abdoulaye = (a || []).map(sanitizeLive);
+    data.oumiya = (o || []).map(sanitizeLive);
+    data.abdoulaye = (a || []).map(sanitizeLive);
 
-  data.oumiya.sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time));
-  data.abdoulaye.sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time));
+    data.oumiya.sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time));
+    data.abdoulaye.sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time));
 
-  redrawAll();
-  toast("✅ Sync Sheets OK");
+    redrawAll();
+    toast("✅ Données chargées");
+  } catch (e) {
+    console.warn("loadAllFromSheets failed:", e);
+    toast("❌ Impossible de lire Sheets");
+  }
 }
 
 /***********************
@@ -222,8 +233,7 @@ function createForm(person) {
     </form>
   `;
 
-  container.querySelector('input[name="date"]').value =
-    new Date().toISOString().slice(0, 10);
+  container.querySelector('input[name="date"]').value = new Date().toISOString().slice(0, 10);
 }
 
 async function addLive(e, person) {
@@ -241,23 +251,22 @@ async function addLive(e, person) {
   };
 
   try {
-    toast("⏳ Envoi vers Sheets...");
+    toast("⏳ Envoi Sheets...");
     await apiAdd(person.toUpperCase(), live);
-    toast("✅ Ajouté sur Sheets");
+    toast("✅ Ajouté");
 
     f.reset();
     f.date.value = new Date().toISOString().slice(0, 10);
 
-    // Recharge depuis la source unique (Sheets)
-    await loadAllFromSheets();
+    await loadAllFromSheets(); // recharge pour afficher direct
   } catch (err) {
     console.warn(err);
-    toast("❌ Envoi Sheets impossible");
+    toast("❌ Envoi impossible");
   }
 }
 
 /***********************
- * Charts
+ * Charts + Tables
  ***********************/
 function renderLine(person, lives) {
   const canvas = document.getElementById("line-" + person);
@@ -376,41 +385,17 @@ function updateDashboard() {
   const a = aggregate(filterLivesByDates(data.abdoulaye, start, end));
 
   const datasets = [];
-  if (showO) datasets.push({
-    label: "Oumiya",
-    data: [
-      { x: "Spectateurs", y: o.viewers },
-      { x: "Likes", y: o.likes },
-      { x: "Durée", y: o.duration },
-      { x: "Commentaires", y: o.comments },
-      { x: "CA", y: o.revenue },
-    ],
-  });
-
-  if (showA) datasets.push({
-    label: "Abdoulaye",
-    data: [
-      { x: "Spectateurs", y: a.viewers },
-      { x: "Likes", y: a.likes },
-      { x: "Durée", y: a.duration },
-      { x: "Commentaires", y: a.comments },
-      { x: "CA", y: a.revenue },
-    ],
-  });
+  if (showO) datasets.push({ label: "Oumiya", data: [o.viewers, o.likes, o.duration, o.comments, o.revenue] });
+  if (showA) datasets.push({ label: "Abdoulaye", data: [a.viewers, a.likes, a.duration, a.comments, a.revenue] });
 
   if (dashboardBar) dashboardBar.destroy();
   dashboardBar = new Chart(canvas, {
     type: "bar",
-    data: { datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      parsing: { xAxisKey: "x", yAxisKey: "y" },
-      scales: {
-        x: { type: "category" },
-        y: { beginAtZero: true },
-      },
+    data: {
+      labels: ["Spectateurs", "Likes", "Durée", "Commentaires", "CA"],
+      datasets,
     },
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } },
   });
 }
 
@@ -465,6 +450,7 @@ function init() {
   createForm("oumiya");
   createForm("abdoulaye");
 
+  // dates par défaut (mois en cours)
   const now = new Date();
   const end = now.toISOString().slice(0, 10);
   const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
@@ -478,12 +464,7 @@ function init() {
   });
 
   showTab("oumiya");
-
-  // Source unique = Google Sheets
-  loadAllFromSheets().catch((e) => {
-    console.warn(e);
-    toast("❌ Impossible de charger Sheets");
-  });
+  loadAllFromSheets();
 }
 
 document.addEventListener("DOMContentLoaded", init);
