@@ -2,7 +2,7 @@
  * CONFIG
  ***********************/
 const API_URL =
-  "https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLhSRrlq_jQKCDPnEQxYgNLAAcGr4xY4bbxnchNXPrhGxUyv0OeefQ9B_IHlKB6i_ewcigOOi7gkBuctUw0N5V4MV2HiL0tzXSYbmStPjIw-pNEpsT8l89YnMiL9jXv6nzMk2IWYuDhUQ4A3BxUJStEUz2KsudQsdXNxipOKbUDguYS4svcWRPTuUK0meD3G7GW8ZqoU62Ru6DDNWCFf7C8LSnI4-CRoJB85WlGZNWl10ivw-qWvPVgFw9DhfHYsBwV3344LsYkAX-gCiTowg7teGFO4KF446g-VSvPLFhxUska_LxhZh2msamqpew4UdyXMxAsETVrRtuXT9bU&lib=MQrgLWHOUS7-keIcsmo-PegvQOQADXBUv";
+  "https://script.google.com/macros/s/AKfycbxzZa_bHktlywIA1hZ9UMhHJJwBSY-82Ng0oxjUOlyWis9CCEl8rMciu1E-_0JyZzM/exec";
 
 /***********************
  * DATA
