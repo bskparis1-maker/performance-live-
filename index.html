@@ -5,14 +5,13 @@
   <title>🔥 Live Performance Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+  <link rel="stylesheet" href="style.css" />
+
   <!-- Chart.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-  <!-- jsPDF (VERSION UMD – corrige ton erreur import) -->
+  <!-- jsPDF UMD (✅ corrige "Cannot use import statement outside a module") -->
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-
-  <!-- Styles -->
-  <link rel="stylesheet" href="style.css" />
 
   <!-- App -->
   <script defer src="app.js"></script>
@@ -22,16 +21,15 @@
   <header>
     <h1>🔥 Live Performance Tracker</h1>
     <nav>
-      <button id="btn-oumiya" onclick="showTab('oumiya')" class="active">Oumiya</button>
+      <button id="btn-oumiya" class="active" onclick="showTab('oumiya')">Oumiya</button>
       <button id="btn-abdoulaye" onclick="showTab('abdoulaye')">Abdoulaye</button>
       <button id="btn-dashboard" onclick="showTab('dashboard')">Dashboard</button>
     </nav>
   </header>
 
-  <!-- Toast -->
   <div id="toast" class="toast hidden"></div>
 
-  <!-- ================= OUMIYA ================= -->
+  <!-- OUMIYA -->
   <section id="oumiya" class="tab">
     <h2>Oumiya</h2>
 
@@ -39,20 +37,6 @@
 
     <div class="card">
       <h3>Graphique en courbes</h3>
-
-      <select id="oumiyaRange" onchange="refreshPerson('oumiya')">
-        <option value="day">Jour</option>
-        <option value="week">Semaine</option>
-        <option value="month" selected>Mois</option>
-        <option value="year">Année</option>
-        <option value="custom">Personnalisé</option>
-      </select>
-
-      <div class="customDates">
-        <input type="date" id="oumiyaStart" onchange="refreshPerson('oumiya')" />
-        <input type="date" id="oumiyaEnd" onchange="refreshPerson('oumiya')" />
-      </div>
-
       <div class="chartWrap">
         <canvas id="line-oumiya"></canvas>
       </div>
@@ -79,7 +63,7 @@
     </div>
   </section>
 
-  <!-- ================= ABDOULAYE ================= -->
+  <!-- ABDOULAYE -->
   <section id="abdoulaye" class="tab hidden">
     <h2>Abdoulaye</h2>
 
@@ -87,20 +71,6 @@
 
     <div class="card">
       <h3>Graphique en courbes</h3>
-
-      <select id="abdoulayeRange" onchange="refreshPerson('abdoulaye')">
-        <option value="day">Jour</option>
-        <option value="week">Semaine</option>
-        <option value="month" selected>Mois</option>
-        <option value="year">Année</option>
-        <option value="custom">Personnalisé</option>
-      </select>
-
-      <div class="customDates">
-        <input type="date" id="abdoulayeStart" onchange="refreshPerson('abdoulaye')" />
-        <input type="date" id="abdoulayeEnd" onchange="refreshPerson('abdoulaye')" />
-      </div>
-
       <div class="chartWrap">
         <canvas id="line-abdoulaye"></canvas>
       </div>
@@ -127,35 +97,19 @@
     </div>
   </section>
 
-  <!-- ================= DASHBOARD ================= -->
+  <!-- DASHBOARD -->
   <section id="dashboard" class="tab hidden">
     <h2>Dashboard</h2>
 
-    <div class="card filters">
-      <select id="rangeSelect" onchange="applyDashboardFilter()">
-        <option value="day">Jour</option>
-        <option value="week">Semaine</option>
-        <option value="month" selected>Mois</option>
-        <option value="year">Année</option>
-        <option value="custom">Personnalisé</option>
-      </select>
-
-      <div class="customDates">
-        <input type="date" id="startDate" onchange="applyDashboardFilter()" />
-        <input type="date" id="endDate" onchange="applyDashboardFilter()" />
+    <div class="card">
+      <div class="chartWrap">
+        <canvas id="dashboardChart"></canvas>
       </div>
-
-      <label><input type="checkbox" id="showOumiya" checked onchange="applyDashboardFilter()"> Oumiya</label>
-      <label><input type="checkbox" id="showAbdoulaye" checked onchange="applyDashboardFilter()"> Abdoulaye</label>
-    </div>
-
-    <div class="card chartWrap">
-      <canvas id="dashboardChart"></canvas>
     </div>
 
     <div class="card">
-      <button onclick="exportPDF()">📄 Export PDF</button>
-      <button onclick="resetAll()" style="background:#a00">🗑 Reset Sheets</button>
+      <button class="btn" onclick="exportPDF()">📄 Export PDF</button>
+      <button class="btn" style="background:#a00" onclick="resetAll()">🗑 Reset Sheets</button>
     </div>
   </section>
 </body>
