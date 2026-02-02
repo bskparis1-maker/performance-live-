@@ -1,226 +1,301 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbz3M4gWp9Py4_K1f5DzY6-6Sf68aJ6kn97WLjaqXtDg_53FpMq8HRbj58lrLP536g/exec";
 
 let data = { oumiya: [], abdoulaye: [] };
-let charts = { oumiya: null, abdoulaye: null, dashboard: null };
+let lineCharts = { oumiya: null, abdoulaye: null };
+let dashboardBar = null;
 
-function toast(msg){
+function toast(msg) {
   const el = document.getElementById("toast");
+  if (!el) return;
   el.textContent = msg;
   el.classList.remove("hidden");
-  setTimeout(()=>el.classList.add("hidden"),2000);
+  setTimeout(() => el.classList.add("hidden"), 1800);
 }
 
-function showTab(tab){
-  document.querySelectorAll(".tab").forEach(s=>s.classList.add("hidden"));
-  document.getElementById(tab).classList.remove("hidden");
-  ["oumiya","abdoulaye","dashboard"].forEach(t=>{
-    document.getElementById("btn-"+t).classList.toggle("active", t===tab);
+function showTab(tab) {
+  document.querySelectorAll(".tab").forEach((t) => t.classList.add("hidden"));
+  const el = document.getElementById(tab);
+  if (el) el.classList.remove("hidden");
+
+  ["oumiya", "abdoulaye", "dashboard"].forEach((t) => {
+    const b = document.getElementById("btn-" + t);
+    if (b) b.classList.toggle("active", t === tab);
   });
 }
 
-async function fetchJSON(url, opt){
-  const r = await fetch(url, { cache:"no-store", ...opt });
-  const t = await r.text();
-  let j;
-  try{ j = JSON.parse(t); } catch { throw new Error("Non JSON: "+t.slice(0,120)); }
-  return j;
+/* ===========================
+   JSONP (anti CORS)
+   =========================== */
+function jsonp(params) {
+  return new Promise((resolve, reject) => {
+    const cb = "cb_" + Math.random().toString(36).slice(2);
+    const url = new URL(API_URL);
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
+    url.searchParams.set("callback", cb);
+
+    const script = document.createElement("script");
+    script.src = url.toString();
+    script.async = true;
+
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error("JSONP timeout"));
+    }, 10000);
+
+    function cleanup() {
+      clearTimeout(timeout);
+      delete window[cb];
+      script.remove();
+    }
+
+    window[cb] = (payload) => {
+      cleanup();
+      resolve(payload);
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("JSONP error"));
+    };
+
+    document.head.appendChild(script);
+  });
 }
 
-async function apiList(person){
-  const j = await fetchJSON(`${API_URL}?action=list&person=${person}`);
-  if(!j.ok) throw new Error(j.error||"list error");
+async function apiList(personUpper) {
+  const j = await jsonp({ action: "list", person: personUpper });
+  if (!j.ok) throw new Error(j.error || "list error");
   return j.rows || [];
 }
 
-async function apiAdd(person, live){
-  const j = await fetchJSON(API_URL,{
-    method:"POST",
-    headers:{ "Content-Type":"text/plain;charset=utf-8" },
-    body: JSON.stringify({ action:"add", person, ...live })
+async function apiAdd(personUpper, live) {
+  const j = await jsonp({
+    action: "add",
+    person: personUpper,
+    date: live.date,
+    time: live.time,
+    viewers: live.viewers,
+    likes: live.likes,
+    duration: live.duration,
+    comments: live.comments,
+    revenue: live.revenue,
   });
-  if(!j.ok) throw new Error(j.error||"add error");
+  if (!j.ok) throw new Error(j.error || "add error");
 }
 
-async function apiReset(person){
-  const j = await fetchJSON(API_URL,{
-    method:"POST",
-    headers:{ "Content-Type":"text/plain;charset=utf-8" },
-    body: JSON.stringify({ action:"reset", person })
-  });
-  if(!j.ok) throw new Error(j.error||"reset error");
+async function apiReset(personUpper) {
+  const j = await jsonp({ action: "reset", person: personUpper });
+  if (!j.ok) throw new Error(j.error || "reset error");
 }
 
-function createForm(person){
-  const c = document.getElementById("form-"+person.toLowerCase());
-  c.innerHTML = `
+/* ===========================
+   UI: Forms
+   =========================== */
+function createForm(person) {
+  const container = document.getElementById("form-" + person);
+  if (!container) return;
+
+  container.innerHTML = `
     <form onsubmit="addLive(event,'${person}')">
       <input name="date" type="date" required>
       <input name="time" type="time" required>
       <input name="viewers" type="number" placeholder="Spectateurs" min="0" required>
       <input name="likes" type="number" placeholder="Likes" min="0" required>
-      <input name="duration" type="number" placeholder="Durée" min="0" required>
+      <input name="duration" type="number" placeholder="Durée (min)" min="0" required>
       <input name="comments" type="number" placeholder="Commentaires" min="0" required>
       <input name="revenue" type="number" placeholder="CA" min="0" step="0.01" required>
       <button class="btn" type="submit">Ajouter Live</button>
     </form>
   `;
-  c.querySelector("input[name=date]").value = new Date().toISOString().slice(0,10);
+
+  container.querySelector('input[name="date"]').value =
+    new Date().toISOString().slice(0, 10);
 }
 
-async function addLive(e, person){
+async function addLive(e, person) {
   e.preventDefault();
   const f = e.target;
+
   const live = {
-    date:f.date.value,
-    time:f.time.value,
-    viewers:+f.viewers.value,
-    likes:+f.likes.value,
-    duration:+f.duration.value,
-    comments:+f.comments.value,
-    revenue:+f.revenue.value
+    date: f.date.value,
+    time: f.time.value,
+    viewers: Number(f.viewers.value || 0),
+    likes: Number(f.likes.value || 0),
+    duration: Number(f.duration.value || 0),
+    comments: Number(f.comments.value || 0),
+    revenue: Number(f.revenue.value || 0),
   };
-  try{
-    toast("⏳ Envoi...");
-    await apiAdd(person, live);
-    toast("✅ Ajouté");
+
+  try {
+    toast("⏳ Envoi vers Sheets...");
+    await apiAdd(person.toUpperCase(), live);
+    toast("✅ Enregistré !");
     f.reset();
-    f.date.value = new Date().toISOString().slice(0,10);
+    f.date.value = new Date().toISOString().slice(0, 10);
     await loadAll();
-  }catch(err){
+  } catch (err) {
     console.warn(err);
-    toast("❌ Erreur envoi");
+    toast("❌ Envoi impossible (JSONP)");
   }
 }
 
-function renderTable(id, rows){
-  const tb = document.getElementById(id);
-  tb.innerHTML = "";
-  if(!rows.length){
-    tb.innerHTML = `<tr><td colspan="7" style="opacity:.7">Aucun live</td></tr>`;
+/* ===========================
+   Charts + Tables
+   =========================== */
+function renderLine(person, lives) {
+  const canvas = document.getElementById("line-" + person);
+  if (!canvas || typeof Chart === "undefined") return;
+
+  const labels = lives.map((l) => `${l.date} ${l.time}`);
+
+  if (lineCharts[person]) lineCharts[person].destroy();
+
+  lineCharts[person] = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "Spectateurs", data: lives.map(l=>l.viewers), tension: 0.25, yAxisID: "ySmall" },
+        { label: "Durée (min)", data: lives.map(l=>l.duration), tension: 0.25, yAxisID: "ySmall" },
+        { label: "Commentaires", data: lives.map(l=>l.comments), tension: 0.25, yAxisID: "ySmall" },
+        { label: "Likes", data: lives.map(l=>l.likes), tension: 0.25, yAxisID: "yBig" },
+        { label: "CA", data: lives.map(l=>l.revenue), tension: 0.25, yAxisID: "yBig" },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: "top" } },
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        ySmall: { type: "linear", position: "left", beginAtZero: true },
+        yBig: { type: "linear", position: "right", beginAtZero: true, grid: { drawOnChartArea: false } },
+      },
+    },
+  });
+}
+
+function renderTable(person, lives) {
+  const tbody = document.getElementById("table-" + person);
+  if (!tbody) return;
+
+  tbody.innerHTML = "";
+  if (!lives.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="opacity:.7">Aucun live</td></tr>`;
     return;
   }
-  rows.forEach(r=>{
+
+  lives.forEach((l) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${r.date}</td><td>${r.time}</td><td>${r.viewers}</td><td>${r.likes}</td>
-      <td>${r.duration}</td><td>${r.comments}</td><td>${(+r.revenue).toFixed(2)}</td>
+      <td>${l.date}</td>
+      <td>${l.time}</td>
+      <td>${l.viewers}</td>
+      <td>${l.likes}</td>
+      <td>${l.duration}</td>
+      <td>${l.comments}</td>
+      <td>${Number(l.revenue).toFixed(2)}</td>
     `;
-    tb.appendChild(tr);
+    tbody.appendChild(tr);
   });
 }
 
-function renderLine(canvasId, rows, key){
-  const c = document.getElementById(canvasId);
-  if(!c || typeof Chart==="undefined") return;
+function aggregate(lives) {
+  const t = { viewers: 0, likes: 0, duration: 0, comments: 0, revenue: 0 };
+  (lives || []).forEach((l) => {
+    t.viewers += l.viewers;
+    t.likes += l.likes;
+    t.duration += l.duration;
+    t.comments += l.comments;
+    t.revenue += l.revenue;
+  });
+  return t;
+}
 
-  const labels = rows.map(r=>`${r.date} ${r.time}`);
+function updateDashboard() {
+  const canvas = document.getElementById("dashboardChart");
+  if (!canvas || typeof Chart === "undefined") return;
 
-  if(charts[key]) charts[key].destroy();
+  const o = aggregate(data.oumiya);
+  const a = aggregate(data.abdoulaye);
 
-  charts[key] = new Chart(c,{
-    type:"line",
-    data:{
-      labels,
-      datasets:[
-        { label:"Spectateurs", data: rows.map(r=>r.viewers), yAxisID:"ySmall", tension:.25 },
-        { label:"Durée", data: rows.map(r=>r.duration), yAxisID:"ySmall", tension:.25 },
-        { label:"Commentaires", data: rows.map(r=>r.comments), yAxisID:"ySmall", tension:.25 },
-        { label:"Likes", data: rows.map(r=>r.likes), yAxisID:"yBig", tension:.25 },
-        { label:"CA", data: rows.map(r=>r.revenue), yAxisID:"yBig", tension:.25 },
-      ]
+  if (dashboardBar) dashboardBar.destroy();
+  dashboardBar = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: ["Spectateurs", "Likes", "Durée", "Commentaires", "CA"],
+      datasets: [
+        { label: "Oumiya", data: [o.viewers, o.likes, o.duration, o.comments, o.revenue] },
+        { label: "Abdoulaye", data: [a.viewers, a.likes, a.duration, a.comments, a.revenue] },
+      ],
     },
-    options:{
-      responsive:true,
-      maintainAspectRatio:false,
-      interaction:{ mode:"index", intersect:false },
-      scales:{
-        ySmall:{ position:"left", beginAtZero:true },
-        yBig:{ position:"right", beginAtZero:true, grid:{ drawOnChartArea:false } }
-      }
-    }
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } },
   });
 }
 
-function agg(rows){
-  return rows.reduce((a,r)=>{
-    a.viewers+=+r.viewers; a.likes+=+r.likes; a.duration+=+r.duration; a.comments+=+r.comments; a.revenue+=+r.revenue;
-    return a;
-  },{viewers:0,likes:0,duration:0,comments:0,revenue:0});
-}
-
-function renderDashboard(){
-  const c = document.getElementById("dashboardChart");
-  if(!c || typeof Chart==="undefined") return;
-
-  const o = agg(data.oumiya);
-  const a = agg(data.abdoulaye);
-
-  if(charts.dashboard) charts.dashboard.destroy();
-
-  charts.dashboard = new Chart(c,{
-    type:"bar",
-    data:{
-      labels:["Spectateurs","Likes","Durée","Commentaires","CA"],
-      datasets:[
-        { label:"Oumiya", data:[o.viewers,o.likes,o.duration,o.comments,o.revenue] },
-        { label:"Abdoulaye", data:[a.viewers,a.likes,a.duration,a.comments,a.revenue] }
-      ]
-    },
-    options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ beginAtZero:true } } }
-  });
-}
-
-async function loadAll(){
-  try{
-    toast("⏳ Chargement...");
-    const [o,a] = await Promise.all([apiList("OUMIYA"), apiList("ABDOULAYE")]);
-    data.oumiya = o;
-    data.abdoulaye = a;
-
-    renderTable("table-oumiya", data.oumiya);
-    renderLine("line-oumiya", data.oumiya, "oumiya");
-
-    renderTable("table-abdoulaye", data.abdoulaye);
-    renderLine("line-abdoulaye", data.abdoulaye, "abdoulaye");
-
-    renderDashboard();
-    toast("✅ OK");
-  }catch(err){
-    console.warn(err);
-    toast("❌ Impossible de lire Sheets");
-  }
-}
-
-async function resetAll(){
-  if(!confirm("Reset Sheets ?")) return;
-  try{
+/* ===========================
+   Actions
+   =========================== */
+async function resetAll() {
+  if (!confirm("Supprimer toutes les données Sheets ?")) return;
+  try {
+    toast("⏳ Reset...");
     await Promise.all([apiReset("OUMIYA"), apiReset("ABDOULAYE")]);
-    await loadAll();
     toast("✅ Reset OK");
-  }catch(err){
-    console.warn(err);
+    await loadAll();
+  } catch (e) {
+    console.warn(e);
     toast("❌ Reset impossible");
   }
 }
 
-function exportPDF(){
+function exportPDF() {
   const { jsPDF } = window.jspdf || {};
-  if(!jsPDF) return toast("❌ jsPDF non chargé");
+  if (!jsPDF) return toast("❌ jsPDF non chargé");
   const doc = new jsPDF();
+  doc.setFontSize(14);
   doc.text("Live Performance Report", 14, 16);
   doc.setFontSize(9);
   doc.text(JSON.stringify(data, null, 2).slice(0, 3500), 14, 28);
   doc.save("performance.pdf");
 }
 
-function init(){
+/* ===========================
+   Load all
+   =========================== */
+async function loadAll() {
+  try {
+    toast("⏳ Chargement Sheets...");
+    const [o, a] = await Promise.all([apiList("OUMIYA"), apiList("ABDOULAYE")]);
+    data.oumiya = o;
+    data.abdoulaye = a;
+
+    renderLine("oumiya", data.oumiya);
+    renderTable("oumiya", data.oumiya);
+
+    renderLine("abdoulaye", data.abdoulaye);
+    renderTable("abdoulaye", data.abdoulaye);
+
+    updateDashboard();
+    toast("✅ OK");
+  } catch (err) {
+    console.warn(err);
+    toast("❌ Impossible de lire Sheets");
+  }
+}
+
+/* ===========================
+   INIT
+   =========================== */
+function init() {
   window.showTab = showTab;
   window.addLive = addLive;
   window.resetAll = resetAll;
   window.exportPDF = exportPDF;
 
-  createForm("OUMIYA");
-  createForm("ABDOULAYE");
+  createForm("oumiya");
+  createForm("abdoulaye");
+
   showTab("oumiya");
   loadAll();
 }
