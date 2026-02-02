@@ -1,154 +1,137 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <title>Live Performance Tracker</title>
+  <meta charset="UTF-8" />
+  <title>🔥 Live Performance Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- Responsive mobile -->
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Chart.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-  <!-- Style -->
-  <link rel="stylesheet" href="style.css">
+  <!-- jsPDF (VERSION UMD – corrige ton erreur import) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
-  <!-- Charts -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css" />
 
-  <!-- PDF -->
-  <script src="https://cdn.jsdelivr.net/npm/jspdf"></script>
+  <!-- App -->
+  <script defer src="app.js"></script>
 </head>
 
 <body>
+  <header>
+    <h1>🔥 Live Performance Tracker</h1>
+    <nav>
+      <button id="btn-oumiya" onclick="showTab('oumiya')" class="active">Oumiya</button>
+      <button id="btn-abdoulaye" onclick="showTab('abdoulaye')">Abdoulaye</button>
+      <button id="btn-dashboard" onclick="showTab('dashboard')">Dashboard</button>
+    </nav>
+  </header>
 
-<header>
-  <h1>🔥 Live Performance Tracker</h1>
-  <nav>
-    <button id="btn-oumiya" onclick="showTab('oumiya')">Oumiya</button>
-    <button id="btn-abdoulaye" onclick="showTab('abdoulaye')">Abdoulaye</button>
-    <button id="btn-dashboard" onclick="showTab('dashboard')">Dashboard</button>
-  </nav>
-</header>
+  <!-- Toast -->
+  <div id="toast" class="toast hidden"></div>
 
-<div id="toast" class="toast hidden"></div>
+  <!-- ================= OUMIYA ================= -->
+  <section id="oumiya" class="tab">
+    <h2>Oumiya</h2>
 
-<!-- =========================
-     OUMIYA
-========================= -->
-<section id="oumiya" class="tab">
-  <h2>Oumiya</h2>
+    <div class="card" id="form-oumiya"></div>
 
-  <div id="form-oumiya"></div>
+    <div class="card">
+      <h3>Graphique en courbes</h3>
 
-  <div class="card">
-    <h3>Graphique en courbes</h3>
+      <select id="oumiyaRange" onchange="refreshPerson('oumiya')">
+        <option value="day">Jour</option>
+        <option value="week">Semaine</option>
+        <option value="month" selected>Mois</option>
+        <option value="year">Année</option>
+        <option value="custom">Personnalisé</option>
+      </select>
 
-    <div class="filters mini">
-      <div class="row">
-        <label>Période</label>
-        <select id="oumiyaRange" onchange="refreshPerson('oumiya')">
-          <option value="day">Jour</option>
-          <option value="week">Semaine</option>
-          <option value="month" selected>Mois</option>
-          <option value="year">Année</option>
-          <option value="custom">Personnalisé</option>
-        </select>
+      <div class="customDates">
+        <input type="date" id="oumiyaStart" onchange="refreshPerson('oumiya')" />
+        <input type="date" id="oumiyaEnd" onchange="refreshPerson('oumiya')" />
+      </div>
 
-        <div class="customDates">
-          <input id="oumiyaStart" type="date" onchange="refreshPerson('oumiya')">
-          <input id="oumiyaEnd" type="date" onchange="refreshPerson('oumiya')">
-        </div>
+      <div class="chartWrap">
+        <canvas id="line-oumiya"></canvas>
       </div>
     </div>
 
-    <div class="chartBox">
-      <canvas id="line-oumiya"></canvas>
+    <div class="card">
+      <h3>Tableau des lives</h3>
+      <div class="tableWrap">
+        <table class="dataTable">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Heure</th>
+              <th>Spectateurs</th>
+              <th>Likes</th>
+              <th>Durée</th>
+              <th>Commentaires</th>
+              <th>CA</th>
+            </tr>
+          </thead>
+          <tbody id="table-oumiya"></tbody>
+        </table>
+      </div>
     </div>
-  </div>
+  </section>
 
-  <div class="card">
-    <h3>Tableau des lives</h3>
-    <div class="tableWrap">
-      <table class="dataTable">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Heure</th>
-            <th>Spectateurs</th>
-            <th>Likes</th>
-            <th>Durée</th>
-            <th>Commentaires</th>
-            <th>CA</th>
-          </tr>
-        </thead>
-        <tbody id="table-oumiya"></tbody>
-      </table>
-    </div>
-  </div>
-</section>
+  <!-- ================= ABDOULAYE ================= -->
+  <section id="abdoulaye" class="tab hidden">
+    <h2>Abdoulaye</h2>
 
-<!-- =========================
-     ABDOULAYE
-========================= -->
-<section id="abdoulaye" class="tab hidden">
-  <h2>Abdoulaye</h2>
+    <div class="card" id="form-abdoulaye"></div>
 
-  <div id="form-abdoulaye"></div>
+    <div class="card">
+      <h3>Graphique en courbes</h3>
 
-  <div class="card">
-    <h3>Graphique en courbes</h3>
+      <select id="abdoulayeRange" onchange="refreshPerson('abdoulaye')">
+        <option value="day">Jour</option>
+        <option value="week">Semaine</option>
+        <option value="month" selected>Mois</option>
+        <option value="year">Année</option>
+        <option value="custom">Personnalisé</option>
+      </select>
 
-    <div class="filters mini">
-      <div class="row">
-        <label>Période</label>
-        <select id="abdoulayeRange" onchange="refreshPerson('abdoulaye')">
-          <option value="day">Jour</option>
-          <option value="week">Semaine</option>
-          <option value="month" selected>Mois</option>
-          <option value="year">Année</option>
-          <option value="custom">Personnalisé</option>
-        </select>
+      <div class="customDates">
+        <input type="date" id="abdoulayeStart" onchange="refreshPerson('abdoulaye')" />
+        <input type="date" id="abdoulayeEnd" onchange="refreshPerson('abdoulaye')" />
+      </div>
 
-        <div class="customDates">
-          <input id="abdoulayeStart" type="date" onchange="refreshPerson('abdoulaye')">
-          <input id="abdoulayeEnd" type="date" onchange="refreshPerson('abdoulaye')">
-        </div>
+      <div class="chartWrap">
+        <canvas id="line-abdoulaye"></canvas>
       </div>
     </div>
 
-    <div class="chartBox">
-      <canvas id="line-abdoulaye"></canvas>
+    <div class="card">
+      <h3>Tableau des lives</h3>
+      <div class="tableWrap">
+        <table class="dataTable">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Heure</th>
+              <th>Spectateurs</th>
+              <th>Likes</th>
+              <th>Durée</th>
+              <th>Commentaires</th>
+              <th>CA</th>
+            </tr>
+          </thead>
+          <tbody id="table-abdoulaye"></tbody>
+        </table>
+      </div>
     </div>
-  </div>
+  </section>
 
-  <div class="card">
-    <h3>Tableau des lives</h3>
-    <div class="tableWrap">
-      <table class="dataTable">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Heure</th>
-            <th>Spectateurs</th>
-            <th>Likes</th>
-            <th>Durée</th>
-            <th>Commentaires</th>
-            <th>CA</th>
-          </tr>
-        </thead>
-        <tbody id="table-abdoulaye"></tbody>
-      </table>
-    </div>
-  </div>
-</section>
+  <!-- ================= DASHBOARD ================= -->
+  <section id="dashboard" class="tab hidden">
+    <h2>Dashboard</h2>
 
-<!-- =========================
-     DASHBOARD
-========================= -->
-<section id="dashboard" class="tab hidden">
-  <h2>Dashboard Comparatif</h2>
-
-  <div class="filters card">
-    <div class="row">
-      <label>Période</label>
+    <div class="card filters">
       <select id="rangeSelect" onchange="applyDashboardFilter()">
         <option value="day">Jour</option>
         <option value="week">Semaine</option>
@@ -158,36 +141,22 @@
       </select>
 
       <div class="customDates">
-        <input id="startDate" type="date" onchange="applyDashboardFilter()">
-        <input id="endDate" type="date" onchange="applyDashboardFilter()">
+        <input type="date" id="startDate" onchange="applyDashboardFilter()" />
+        <input type="date" id="endDate" onchange="applyDashboardFilter()" />
       </div>
+
+      <label><input type="checkbox" id="showOumiya" checked onchange="applyDashboardFilter()"> Oumiya</label>
+      <label><input type="checkbox" id="showAbdoulaye" checked onchange="applyDashboardFilter()"> Abdoulaye</label>
     </div>
 
-    <div class="row">
-      <label>Afficher</label>
-      <label class="chip">
-        <input type="checkbox" id="showOumiya" checked onchange="applyDashboardFilter()"> Oumiya
-      </label>
-      <label class="chip">
-        <input type="checkbox" id="showAbdoulaye" checked onchange="applyDashboardFilter()"> Abdoulaye
-      </label>
-    </div>
-
-    <div class="row">
-      <button class="btn" onclick="exportPDF()">Exporter PDF</button>
-      <button class="btn ghost" onclick="resetAll()">Reset données</button>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>Comparaison</h3>
-    <div class="chartBox">
+    <div class="card chartWrap">
       <canvas id="dashboardChart"></canvas>
     </div>
-  </div>
-</section>
 
-<script src="app.js"></script>
-
+    <div class="card">
+      <button onclick="exportPDF()">📄 Export PDF</button>
+      <button onclick="resetAll()" style="background:#a00">🗑 Reset Sheets</button>
+    </div>
+  </section>
 </body>
 </html>
