@@ -1,344 +1,227 @@
-/***********************
- * CONFIG
- ***********************/
-const API_URL = "https://script.google.com/macros/s/AKfycbwXxsuxb5VHiG9YzpXHR2qF9W-IddzB01gck3F2ACEXhy-byEM91mKodfZCr9UsYeE/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbz3M4gWp9Py4_K1f5DzY6-6Sf68aJ6kn97WLjaqXtDg_53FpMq8HRbj58lrLP536g/exec";
 
-/***********************
- * DATA
- ***********************/
 let data = { oumiya: [], abdoulaye: [] };
-let lineCharts = { oumiya: null, abdoulaye: null };
-let dashboardBar = null;
+let charts = { oumiya: null, abdoulaye: null, dashboard: null };
 
-/***********************
- * UI
- ***********************/
-function toast(msg) {
+function toast(msg){
   const el = document.getElementById("toast");
-  if (!el) return;
   el.textContent = msg;
   el.classList.remove("hidden");
-  setTimeout(() => el.classList.add("hidden"), 2200);
+  setTimeout(()=>el.classList.add("hidden"),2000);
 }
 
-function showTab(tab) {
-  document.querySelectorAll(".tab").forEach((t) => t.classList.add("hidden"));
-  document.getElementById(tab)?.classList.remove("hidden");
-
-  ["oumiya", "abdoulaye", "dashboard"].forEach((p) => {
-    const b = document.getElementById("btn-" + p);
-    if (b) b.classList.toggle("active", p === tab);
+function showTab(tab){
+  document.querySelectorAll(".tab").forEach(s=>s.classList.add("hidden"));
+  document.getElementById(tab).classList.remove("hidden");
+  ["oumiya","abdoulaye","dashboard"].forEach(t=>{
+    document.getElementById("btn-"+t).classList.toggle("active", t===tab);
   });
-
-  if (tab === "oumiya") refreshPerson("oumiya");
-  if (tab === "abdoulaye") refreshPerson("abdoulaye");
-  if (tab === "dashboard") updateDashboard();
 }
 
-/***********************
- * Helpers
- ***********************/
-function qs(obj) {
-  return new URLSearchParams(obj).toString();
+async function fetchJSON(url, opt){
+  const r = await fetch(url, { cache:"no-store", ...opt });
+  const t = await r.text();
+  let j;
+  try{ j = JSON.parse(t); } catch { throw new Error("Non JSON: "+t.slice(0,120)); }
+  return j;
 }
 
-async function fetchJson(url, options = {}) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 12000);
-
-  try {
-    const res = await fetch(url, {
-      cache: "no-store",
-      signal: ctrl.signal,
-      ...options,
-    });
-    const txt = await res.text();
-    let j;
-    try {
-      j = JSON.parse(txt);
-    } catch {
-      throw new Error("Réponse non JSON: " + txt.slice(0, 120));
-    }
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    return j;
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-function sanitizeLive(l) {
-  return {
-    date: String(l.date || ""),
-    time: String(l.time || ""),
-    viewers: Number(l.viewers || 0),
-    likes: Number(l.likes || 0),
-    duration: Number(l.duration || 0),
-    comments: Number(l.comments || 0),
-    revenue: Number(l.revenue || 0),
-  };
-}
-
-/***********************
- * API
- ***********************/
-async function apiPing() {
-  return fetchJson(`${API_URL}?${qs({ action: "ping" })}`);
-}
-
-async function apiList(personUpper) {
-  const j = await fetchJson(`${API_URL}?${qs({ action: "list", person: personUpper })}`);
-  if (!j.ok) throw new Error(j.error || "list error");
+async function apiList(person){
+  const j = await fetchJSON(`${API_URL}?action=list&person=${person}`);
+  if(!j.ok) throw new Error(j.error||"list error");
   return j.rows || [];
 }
 
-async function apiAdd(personUpper, live) {
-  const j = await fetchJson(API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" }, // Apps Script safe
-    body: JSON.stringify({ action: "add", person: personUpper, ...live }),
+async function apiAdd(person, live){
+  const j = await fetchJSON(API_URL,{
+    method:"POST",
+    headers:{ "Content-Type":"text/plain;charset=utf-8" },
+    body: JSON.stringify({ action:"add", person, ...live })
   });
-  if (!j.ok) throw new Error(j.error || "add error");
+  if(!j.ok) throw new Error(j.error||"add error");
 }
 
-async function apiReset(personUpper) {
-  const j = await fetchJson(API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ action: "reset", person: personUpper }),
+async function apiReset(person){
+  const j = await fetchJSON(API_URL,{
+    method:"POST",
+    headers:{ "Content-Type":"text/plain;charset=utf-8" },
+    body: JSON.stringify({ action:"reset", person })
   });
-  if (!j.ok) throw new Error(j.error || "reset error");
+  if(!j.ok) throw new Error(j.error||"reset error");
 }
 
-/***********************
- * Load
- ***********************/
-async function loadAll() {
-  try {
-    toast("⏳ Chargement Sheets...");
-    const [o, a] = await Promise.all([apiList("OUMIYA"), apiList("ABDOULAYE")]);
-
-    data.oumiya = (o || []).map(sanitizeLive);
-    data.abdoulaye = (a || []).map(sanitizeLive);
-
-    data.oumiya.sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time));
-    data.abdoulaye.sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time));
-
-    redrawAll();
-    toast("✅ Données chargées");
-  } catch (e) {
-    console.warn(e);
-    toast("❌ Impossible de lire Sheets");
-  }
-}
-
-/***********************
- * Forms
- ***********************/
-function createForm(person) {
-  const container = document.getElementById("form-" + person);
-  if (!container) return;
-
-  container.innerHTML = `
+function createForm(person){
+  const c = document.getElementById("form-"+person.toLowerCase());
+  c.innerHTML = `
     <form onsubmit="addLive(event,'${person}')">
       <input name="date" type="date" required>
       <input name="time" type="time" required>
       <input name="viewers" type="number" placeholder="Spectateurs" min="0" required>
       <input name="likes" type="number" placeholder="Likes" min="0" required>
-      <input name="duration" type="number" placeholder="Durée (min)" min="0" required>
+      <input name="duration" type="number" placeholder="Durée" min="0" required>
       <input name="comments" type="number" placeholder="Commentaires" min="0" required>
       <input name="revenue" type="number" placeholder="CA" min="0" step="0.01" required>
-      <button type="submit">Ajouter Live</button>
+      <button class="btn" type="submit">Ajouter Live</button>
     </form>
   `;
-
-  container.querySelector('input[name="date"]').value = new Date().toISOString().slice(0, 10);
+  c.querySelector("input[name=date]").value = new Date().toISOString().slice(0,10);
 }
 
-async function addLive(e, person) {
+async function addLive(e, person){
   e.preventDefault();
   const f = e.target;
-
   const live = {
-    date: f.date.value,
-    time: f.time.value,
-    viewers: Number(f.viewers.value || 0),
-    likes: Number(f.likes.value || 0),
-    duration: Number(f.duration.value || 0),
-    comments: Number(f.comments.value || 0),
-    revenue: Number(f.revenue.value || 0),
+    date:f.date.value,
+    time:f.time.value,
+    viewers:+f.viewers.value,
+    likes:+f.likes.value,
+    duration:+f.duration.value,
+    comments:+f.comments.value,
+    revenue:+f.revenue.value
   };
-
-  try {
+  try{
     toast("⏳ Envoi...");
-    await apiAdd(person.toUpperCase(), live);
+    await apiAdd(person, live);
     toast("✅ Ajouté");
     f.reset();
-    f.date.value = new Date().toISOString().slice(0, 10);
+    f.date.value = new Date().toISOString().slice(0,10);
     await loadAll();
-  } catch (err) {
+  }catch(err){
     console.warn(err);
-    toast("❌ Envoi échoué");
+    toast("❌ Erreur envoi");
   }
 }
 
-/***********************
- * Charts + Tables
- ***********************/
-function renderLine(person, lives) {
-  const canvas = document.getElementById("line-" + person);
-  if (!canvas || typeof Chart === "undefined") return;
-
-  const labels = lives.map((l) => `${l.date} ${l.time}`);
-
-  if (lineCharts[person]) lineCharts[person].destroy();
-
-  lineCharts[person] = new Chart(canvas, {
-    type: "line",
-    data: {
-      labels,
-      datasets: [
-        { label: "Spectateurs", data: lives.map((l) => l.viewers), yAxisID: "ySmall", tension: 0.25 },
-        { label: "Durée (min)", data: lives.map((l) => l.duration), yAxisID: "ySmall", tension: 0.25 },
-        { label: "Commentaires", data: lives.map((l) => l.comments), yAxisID: "ySmall", tension: 0.25 },
-        { label: "Likes", data: lives.map((l) => l.likes), yAxisID: "yBig", tension: 0.25 },
-        { label: "CA", data: lives.map((l) => l.revenue), yAxisID: "yBig", tension: 0.25 },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { position: "top" } },
-      interaction: { mode: "index", intersect: false },
-      scales: {
-        ySmall: { type: "linear", position: "left", beginAtZero: true },
-        yBig: { type: "linear", position: "right", beginAtZero: true, grid: { drawOnChartArea: false } },
-      },
-    },
-  });
-}
-
-function renderTable(person, lives) {
-  const tbody = document.getElementById("table-" + person);
-  if (!tbody) return;
-
-  tbody.innerHTML = "";
-  if (!lives.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="color:#b7b7c9;">Aucun live</td></tr>`;
+function renderTable(id, rows){
+  const tb = document.getElementById(id);
+  tb.innerHTML = "";
+  if(!rows.length){
+    tb.innerHTML = `<tr><td colspan="7" style="opacity:.7">Aucun live</td></tr>`;
     return;
   }
-
-  lives.forEach((l) => {
+  rows.forEach(r=>{
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${l.date}</td>
-      <td>${l.time}</td>
-      <td>${l.viewers}</td>
-      <td>${l.likes}</td>
-      <td>${l.duration}</td>
-      <td>${l.comments}</td>
-      <td>${Number(l.revenue).toFixed(2)}</td>
+      <td>${r.date}</td><td>${r.time}</td><td>${r.viewers}</td><td>${r.likes}</td>
+      <td>${r.duration}</td><td>${r.comments}</td><td>${(+r.revenue).toFixed(2)}</td>
     `;
-    tbody.appendChild(tr);
+    tb.appendChild(tr);
   });
 }
 
-function refreshPerson(person) {
-  renderLine(person, data[person]);
-  renderTable(person, data[person]);
-}
+function renderLine(canvasId, rows, key){
+  const c = document.getElementById(canvasId);
+  if(!c || typeof Chart==="undefined") return;
 
-/***********************
- * Dashboard
- ***********************/
-function aggregate(lives) {
-  const t = { viewers: 0, likes: 0, duration: 0, comments: 0, revenue: 0 };
-  (lives || []).forEach((l) => {
-    t.viewers += l.viewers;
-    t.likes += l.likes;
-    t.duration += l.duration;
-    t.comments += l.comments;
-    t.revenue += l.revenue;
-  });
-  return t;
-}
+  const labels = rows.map(r=>`${r.date} ${r.time}`);
 
-function updateDashboard() {
-  const canvas = document.getElementById("dashboardChart");
-  if (!canvas || typeof Chart === "undefined") return;
+  if(charts[key]) charts[key].destroy();
 
-  const o = aggregate(data.oumiya);
-  const a = aggregate(data.abdoulaye);
-
-  const labels = ["Spectateurs", "Likes", "Durée", "Commentaires", "CA"];
-  const datasets = [
-    { label: "Oumiya", data: [o.viewers, o.likes, o.duration, o.comments, o.revenue] },
-    { label: "Abdoulaye", data: [a.viewers, a.likes, a.duration, a.comments, a.revenue] },
-  ];
-
-  if (dashboardBar) dashboardBar.destroy();
-  dashboardBar = new Chart(canvas, {
-    type: "bar",
-    data: { labels, datasets },
-    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } },
+  charts[key] = new Chart(c,{
+    type:"line",
+    data:{
+      labels,
+      datasets:[
+        { label:"Spectateurs", data: rows.map(r=>r.viewers), yAxisID:"ySmall", tension:.25 },
+        { label:"Durée", data: rows.map(r=>r.duration), yAxisID:"ySmall", tension:.25 },
+        { label:"Commentaires", data: rows.map(r=>r.comments), yAxisID:"ySmall", tension:.25 },
+        { label:"Likes", data: rows.map(r=>r.likes), yAxisID:"yBig", tension:.25 },
+        { label:"CA", data: rows.map(r=>r.revenue), yAxisID:"yBig", tension:.25 },
+      ]
+    },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      interaction:{ mode:"index", intersect:false },
+      scales:{
+        ySmall:{ position:"left", beginAtZero:true },
+        yBig:{ position:"right", beginAtZero:true, grid:{ drawOnChartArea:false } }
+      }
+    }
   });
 }
 
-/***********************
- * Actions
- ***********************/
-async function resetAll() {
-  if (!confirm("Supprimer toutes les données Sheets ?")) return;
-  try {
-    toast("⏳ Reset...");
+function agg(rows){
+  return rows.reduce((a,r)=>{
+    a.viewers+=+r.viewers; a.likes+=+r.likes; a.duration+=+r.duration; a.comments+=+r.comments; a.revenue+=+r.revenue;
+    return a;
+  },{viewers:0,likes:0,duration:0,comments:0,revenue:0});
+}
+
+function renderDashboard(){
+  const c = document.getElementById("dashboardChart");
+  if(!c || typeof Chart==="undefined") return;
+
+  const o = agg(data.oumiya);
+  const a = agg(data.abdoulaye);
+
+  if(charts.dashboard) charts.dashboard.destroy();
+
+  charts.dashboard = new Chart(c,{
+    type:"bar",
+    data:{
+      labels:["Spectateurs","Likes","Durée","Commentaires","CA"],
+      datasets:[
+        { label:"Oumiya", data:[o.viewers,o.likes,o.duration,o.comments,o.revenue] },
+        { label:"Abdoulaye", data:[a.viewers,a.likes,a.duration,a.comments,a.revenue] }
+      ]
+    },
+    options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ beginAtZero:true } } }
+  });
+}
+
+async function loadAll(){
+  try{
+    toast("⏳ Chargement...");
+    const [o,a] = await Promise.all([apiList("OUMIYA"), apiList("ABDOULAYE")]);
+    data.oumiya = o;
+    data.abdoulaye = a;
+
+    renderTable("table-oumiya", data.oumiya);
+    renderLine("line-oumiya", data.oumiya, "oumiya");
+
+    renderTable("table-abdoulaye", data.abdoulaye);
+    renderLine("line-abdoulaye", data.abdoulaye, "abdoulaye");
+
+    renderDashboard();
+    toast("✅ OK");
+  }catch(err){
+    console.warn(err);
+    toast("❌ Impossible de lire Sheets");
+  }
+}
+
+async function resetAll(){
+  if(!confirm("Reset Sheets ?")) return;
+  try{
     await Promise.all([apiReset("OUMIYA"), apiReset("ABDOULAYE")]);
     await loadAll();
     toast("✅ Reset OK");
-  } catch (e) {
-    console.warn(e);
+  }catch(err){
+    console.warn(err);
     toast("❌ Reset impossible");
   }
 }
 
-function exportPDF() {
+function exportPDF(){
   const { jsPDF } = window.jspdf || {};
-  if (!jsPDF) return toast("❌ jsPDF non chargé");
+  if(!jsPDF) return toast("❌ jsPDF non chargé");
   const doc = new jsPDF();
-  doc.setFontSize(14);
   doc.text("Live Performance Report", 14, 16);
   doc.setFontSize(9);
   doc.text(JSON.stringify(data, null, 2).slice(0, 3500), 14, 28);
   doc.save("performance.pdf");
 }
 
-/***********************
- * INIT
- ***********************/
-function redrawAll() {
-  refreshPerson("oumiya");
-  refreshPerson("abdoulaye");
-  updateDashboard();
-}
-
-async function init() {
+function init(){
   window.showTab = showTab;
   window.addLive = addLive;
-  window.refreshPerson = refreshPerson;
   window.resetAll = resetAll;
   window.exportPDF = exportPDF;
 
-  createForm("oumiya");
-  createForm("abdoulaye");
+  createForm("OUMIYA");
+  createForm("ABDOULAYE");
   showTab("oumiya");
-
-  // Ping simple pour vérifier l’API
-  try {
-    await apiPing();
-  } catch (e) {
-    console.warn(e);
-    toast("❌ API inaccessible (déploiement?)");
-    return;
-  }
-
   loadAll();
 }
 
