@@ -266,6 +266,13 @@ html, body {
    CHART RESPONSIVE FIX
    ========================= */
 
+.chartWrap{
+  height: 320px;
+}
+@media (max-width:720px){
+  .chartWrap{ height: 260px; }
+}
+
 /* Desktop height */
 .chartBox {
   width: 100%;
