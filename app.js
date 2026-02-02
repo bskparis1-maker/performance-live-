@@ -1,8 +1,7 @@
 /***********************
  * CONFIG
  ***********************/
-const API_URL =
-  "https://script.google.com/macros/s/AKfycbxzZa_bHktlywIA1hZ9UMhHJJwBSY-82Ng0oxjUOlyWis9CCEl8rMciu1E-_0JyZzM/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwXxsuxb5VHiG9YzpXHR2qF9W-IddzB01gck3F2ACEXhy-byEM91mKodfZCr9UsYeE/exec";
 
 /***********************
  * DATA
@@ -37,96 +36,36 @@ function showTab(tab) {
 }
 
 /***********************
- * URL helpers
+ * Helpers
  ***********************/
 function qs(obj) {
   return new URLSearchParams(obj).toString();
 }
 
-function buildUrl(params) {
-  // ✅ IMPORTANT: si API_URL n'a pas "?", on met "?"
-  return API_URL + (API_URL.includes("?") ? "&" : "?") + qs(params);
-}
+async function fetchJson(url, options = {}) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 12000);
 
-/***********************
- * JSONP (anti-CORS)
- ***********************/
-function jsonp(url, timeoutMs = 12000) {
-  return new Promise((resolve, reject) => {
-    const cb = "cb_" + Math.random().toString(36).slice(2);
-    const script = document.createElement("script");
-    let done = false;
-
-    const timer = setTimeout(() => {
-      if (done) return;
-      done = true;
-      cleanup();
-      reject(new Error("Timeout JSONP"));
-    }, timeoutMs);
-
-    function cleanup() {
-      clearTimeout(timer);
-      try {
-        delete window[cb];
-      } catch {}
-      script.remove();
+  try {
+    const res = await fetch(url, {
+      cache: "no-store",
+      signal: ctrl.signal,
+      ...options,
+    });
+    const txt = await res.text();
+    let j;
+    try {
+      j = JSON.parse(txt);
+    } catch {
+      throw new Error("Réponse non JSON: " + txt.slice(0, 120));
     }
-
-    window[cb] = (payload) => {
-      if (done) return;
-      done = true;
-      cleanup();
-      resolve(payload);
-    };
-
-    script.onerror = () => {
-      if (done) return;
-      done = true;
-      cleanup();
-      reject(new Error("JSONP error (script load failed)"));
-    };
-
-    // ✅ cache buster pour éviter les vieilles réponses
-    script.src = url + (url.includes("?") ? "&" : "?") + "callback=" + cb + "&_=" + Date.now();
-    document.body.appendChild(script);
-  });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return j;
+  } finally {
+    clearTimeout(t);
+  }
 }
 
-/***********************
- * API Sheets
- ***********************/
-async function apiList(personUpper) {
-  const url = buildUrl({ action: "list", person: personUpper });
-  const j = await jsonp(url);
-  if (!j || !j.ok) throw new Error(j?.error || "list error");
-  return j.rows || [];
-}
-
-async function apiAdd(personUpper, live) {
-  const url = buildUrl({
-    action: "add",
-    person: personUpper,
-    date: live.date,
-    time: live.time,
-    viewers: live.viewers,
-    likes: live.likes,
-    duration: live.duration,
-    comments: live.comments,
-    revenue: live.revenue,
-  });
-  const j = await jsonp(url);
-  if (!j || !j.ok) throw new Error(j?.error || "add error");
-}
-
-async function apiReset(personUpper) {
-  const url = buildUrl({ action: "reset", person: personUpper });
-  const j = await jsonp(url);
-  if (!j || !j.ok) throw new Error(j?.error || "reset error");
-}
-
-/***********************
- * Data helpers
- ***********************/
 function sanitizeLive(l) {
   return {
     date: String(l.date || ""),
@@ -140,11 +79,42 @@ function sanitizeLive(l) {
 }
 
 /***********************
+ * API
+ ***********************/
+async function apiPing() {
+  return fetchJson(`${API_URL}?${qs({ action: "ping" })}`);
+}
+
+async function apiList(personUpper) {
+  const j = await fetchJson(`${API_URL}?${qs({ action: "list", person: personUpper })}`);
+  if (!j.ok) throw new Error(j.error || "list error");
+  return j.rows || [];
+}
+
+async function apiAdd(personUpper, live) {
+  const j = await fetchJson(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" }, // Apps Script safe
+    body: JSON.stringify({ action: "add", person: personUpper, ...live }),
+  });
+  if (!j.ok) throw new Error(j.error || "add error");
+}
+
+async function apiReset(personUpper) {
+  const j = await fetchJson(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "reset", person: personUpper }),
+  });
+  if (!j.ok) throw new Error(j.error || "reset error");
+}
+
+/***********************
  * Load
  ***********************/
 async function loadAll() {
   try {
-    toast("⏳ Lecture Sheets...");
+    toast("⏳ Chargement Sheets...");
     const [o, a] = await Promise.all([apiList("OUMIYA"), apiList("ABDOULAYE")]);
 
     data.oumiya = (o || []).map(sanitizeLive);
@@ -154,7 +124,7 @@ async function loadAll() {
     data.abdoulaye.sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time));
 
     redrawAll();
-    toast("✅ Sheets OK");
+    toast("✅ Données chargées");
   } catch (e) {
     console.warn(e);
     toast("❌ Impossible de lire Sheets");
@@ -199,24 +169,16 @@ async function addLive(e, person) {
   };
 
   try {
-    toast("⏳ Envoi Sheets...");
+    toast("⏳ Envoi...");
     await apiAdd(person.toUpperCase(), live);
-    toast("✅ Envoyé");
+    toast("✅ Ajouté");
     f.reset();
     f.date.value = new Date().toISOString().slice(0, 10);
     await loadAll();
   } catch (err) {
     console.warn(err);
-    toast("❌ Envoi impossible");
+    toast("❌ Envoi échoué");
   }
-}
-
-/***********************
- * Filters (simple : on affiche tout, et tu peux ajouter tes filtres après)
- ***********************/
-function refreshPerson(person) {
-  renderLine(person, data[person]);
-  renderTable(person, data[person]);
 }
 
 /***********************
@@ -227,6 +189,7 @@ function renderLine(person, lives) {
   if (!canvas || typeof Chart === "undefined") return;
 
   const labels = lives.map((l) => `${l.date} ${l.time}`);
+
   if (lineCharts[person]) lineCharts[person].destroy();
 
   lineCharts[person] = new Chart(canvas, {
@@ -279,6 +242,11 @@ function renderTable(person, lives) {
   });
 }
 
+function refreshPerson(person) {
+  renderLine(person, data[person]);
+  renderTable(person, data[person]);
+}
+
 /***********************
  * Dashboard
  ***********************/
@@ -319,7 +287,7 @@ function updateDashboard() {
  * Actions
  ***********************/
 async function resetAll() {
-  if (!confirm("Supprimer toutes les données sur Google Sheets ?")) return;
+  if (!confirm("Supprimer toutes les données Sheets ?")) return;
   try {
     toast("⏳ Reset...");
     await Promise.all([apiReset("OUMIYA"), apiReset("ABDOULAYE")]);
@@ -334,7 +302,6 @@ async function resetAll() {
 function exportPDF() {
   const { jsPDF } = window.jspdf || {};
   if (!jsPDF) return toast("❌ jsPDF non chargé");
-
   const doc = new jsPDF();
   doc.setFontSize(14);
   doc.text("Live Performance Report", 14, 16);
@@ -344,7 +311,7 @@ function exportPDF() {
 }
 
 /***********************
- * Render + Init
+ * INIT
  ***********************/
 function redrawAll() {
   refreshPerson("oumiya");
@@ -352,7 +319,7 @@ function redrawAll() {
   updateDashboard();
 }
 
-function init() {
+async function init() {
   window.showTab = showTab;
   window.addLive = addLive;
   window.refreshPerson = refreshPerson;
@@ -361,8 +328,17 @@ function init() {
 
   createForm("oumiya");
   createForm("abdoulaye");
-
   showTab("oumiya");
+
+  // Ping simple pour vérifier l’API
+  try {
+    await apiPing();
+  } catch (e) {
+    console.warn(e);
+    toast("❌ API inaccessible (déploiement?)");
+    return;
+  }
+
   loadAll();
 }
 
